@@ -1,0 +1,303 @@
+/* Regenerate Plus — styles. Tous les éléments flottants sont enfants directs de <body> (hors ancêtre transformé). */
+
+/* ---------- boutons communs ---------- */
+.regenplus-btn {
+    -webkit-appearance: none;
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 46px; /* cible tactile confortable (> 44 pt Apple) */
+    min-width: 46px;
+    padding: 0 18px;
+    margin: 0;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.5));
+    border-radius: 23px;
+    background: var(--SmartThemeBlurTintColor, rgba(30, 30, 30, 0.85));
+    color: var(--SmartThemeBodyColor, #ddd);
+    font: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    touch-action: manipulation; /* pas de zoom au double tap, pas de délai de 300 ms */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    box-sizing: border-box;
+    transition: transform 0.08s ease, opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.regenplus-btn:active {
+    transform: scale(0.95);
+}
+
+.regenplus-btn[hidden] {
+    display: none !important;
+}
+
+.regenplus-ico {
+    display: inline-block;
+    font-size: 18px;
+    line-height: 1;
+}
+
+.regenplus-btn.regenplus-busy {
+    pointer-events: none;
+    opacity: 0.85;
+}
+
+.regenplus-btn.regenplus-busy .regenplus-ico {
+    animation: regenplus-spin 0.9s linear infinite;
+}
+
+@keyframes regenplus-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ---------- ligne dans un message ---------- */
+.regenplus-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 10px 0 6px;
+    padding: 0;
+    clear: both;
+}
+
+.regenplus-row.regenplus-dim .regenplus-btn {
+    opacity: 0.55;
+}
+
+/* ---------- bouton flottant ---------- */
+#regenplus-float {
+    --regenplus-size: 56px;
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 31; /* devant le chat (#sheld = 30), toujours au-dessus de la barre d'envoi dans l'écran (jamais dessus) mais derrière les menus (≥ 2000) et popups */
+    display: none;
+    flex-direction: row;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    transform: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+    box-sizing: border-box;
+}
+
+#regenplus-float.regenplus-show {
+    display: flex;
+}
+
+#regenplus-float .regenplus-fbtn {
+    width: var(--regenplus-size);
+    height: var(--regenplus-size);
+    min-width: var(--regenplus-size);
+    min-height: var(--regenplus-size);
+    padding: 0;
+    border-radius: 50%;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.45);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+}
+
+#regenplus-float .regenplus-fbtn .regenplus-ico {
+    font-size: calc(var(--regenplus-size) * 0.45);
+}
+
+#regenplus-float .regenplus-fbtn.regenplus-undo {
+    width: calc(var(--regenplus-size) * 0.75);
+    height: calc(var(--regenplus-size) * 0.75);
+    min-width: 44px;
+    min-height: 44px;
+    align-self: center;
+}
+
+#regenplus-float .regenplus-move-label {
+    display: none;
+}
+
+#regenplus-float.regenplus-move {
+    outline: 2px dashed var(--SmartThemeQuoteColor, #4da3ff);
+    outline-offset: 6px;
+    border-radius: 14px;
+    touch-action: none;
+    cursor: grab;
+}
+
+#regenplus-float.regenplus-move .regenplus-btn {
+    pointer-events: none;
+}
+
+#regenplus-float.regenplus-move .regenplus-move-label {
+    display: block;
+    position: absolute;
+    left: 50%;
+    top: -26px;
+    transform: translateX(-50%);
+    padding: 2px 10px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 700;
+    white-space: nowrap;
+    background: var(--SmartThemeQuoteColor, #4da3ff);
+    color: #fff;
+}
+
+#regenplus-float.regenplus-dragging {
+    cursor: grabbing;
+    opacity: 0.9;
+}
+
+#regenplus-move-done {
+    position: fixed;
+    left: 50%;
+    top: calc(env(safe-area-inset-top, 0px) + 70px);
+    transform: translateX(-50%);
+    z-index: 3500;
+    display: none;
+    min-height: 46px;
+    padding: 0 22px;
+    border: 0;
+    border-radius: 23px;
+    background: var(--SmartThemeQuoteColor, #4da3ff);
+    color: #fff;
+    font: inherit;
+    font-weight: 700;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    touch-action: manipulation;
+}
+
+#regenplus-move-done.regenplus-show {
+    display: block;
+}
+
+/* ---------- bandeau « Débloquer » ---------- */
+#regenplus-unlock {
+    position: fixed;
+    left: 50%;
+    top: calc(env(safe-area-inset-top, 0px) + 56px);
+    transform: translateX(-50%);
+    z-index: 2900; /* sous la barre du haut (3000) et les popups, au-dessus du chat */
+    display: none;
+    align-items: center;
+    gap: 8px;
+    max-width: calc(100vw - 16px);
+    padding: 6px 8px 6px 14px;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.5));
+    border-radius: 28px;
+    background: var(--SmartThemeBlurTintColor, rgba(30, 30, 30, 0.92));
+    color: var(--SmartThemeBodyColor, #ddd);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+#regenplus-unlock.regenplus-show {
+    display: flex;
+}
+
+#regenplus-unlock .regenplus-unlock-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+#regenplus-unlock .regenplus-unlock-close {
+    flex: 0 0 auto;
+    width: 44px;
+    height: 44px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font-size: 18px;
+    touch-action: manipulation;
+}
+
+/* ---------- pastille « Régénération en cours » ---------- */
+#regenplus-status {
+    position: fixed;
+    left: 50%;
+    top: calc(env(safe-area-inset-top, 0px) + 56px);
+    transform: translateX(-50%);
+    z-index: 2800;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    max-width: calc(100vw - 16px);
+    padding: 4px 6px 4px 14px;
+    border: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.5));
+    border-radius: 28px;
+    background: var(--SmartThemeBlurTintColor, rgba(30, 30, 30, 0.92));
+    color: var(--SmartThemeBodyColor, #ddd);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+    font-size: 14px;
+    box-sizing: border-box;
+}
+
+#regenplus-status.regenplus-show {
+    display: flex;
+}
+
+#regenplus-status .regenplus-spin {
+    animation: regenplus-spin 0.9s linear infinite;
+}
+
+#regenplus-status .regenplus-status-stop {
+    min-height: 44px;
+    padding: 0 14px;
+}
+
+/* le bandeau « Débloquer » prend la place de la pastille */
+#regenplus-unlock.regenplus-show ~ #regenplus-status {
+    display: none;
+}
+
+/* ---------- réglages ---------- */
+.regenplus-settings .regenplus-section {
+    margin: 14px 0 6px;
+    padding-top: 8px;
+    border-top: 1px solid var(--SmartThemeBorderColor, rgba(128, 128, 128, 0.4));
+    font-weight: 700;
+    opacity: 0.9;
+}
+
+.regenplus-settings .regenplus-section:first-child {
+    border-top: 0;
+    margin-top: 4px;
+}
+
+.regenplus-settings label {
+    display: block;
+    margin-top: 6px;
+}
+
+.regenplus-settings input[type="range"] {
+    width: 100%;
+}
+
+.regenplus-settings .regenplus-hint {
+    display: block;
+    opacity: 0.7;
+    margin: 2px 0 4px;
+}
+
+.regenplus-settings .regenplus-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 8px 0;
+}
+
+.regenplus-settings .menu_button.regenplus-active {
+    outline: 2px solid var(--SmartThemeQuoteColor, #4da3ff);
+}
+
+/* ---------- option : masquer le Régénérer natif du menu ✨ ---------- */
+body.regenplus-hide-builtin #option_regenerate {
+    display: none !important;
+}

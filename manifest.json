@@ -1,0 +1,14 @@
+{
+    "display_name": "Regenerate Plus",
+    "loading_order": 10,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "hydravnss",
+    "version": "1.0.0",
+    "homePage": "https://github.com/hydravnss/regenerate-plus",
+    "minimum_client_version": "1.12.0",
+    "auto_update": true,
+    "description": "FR: Un « Régénérer » fiable pour iPhone et les groupes : remplace le texte (ou nouveau swipe), même personnage en groupe, anti double-tap, déblocage des générations bloquées, nouvelles tentatives, annulation. EN: A reliable Regenerate for mobile and group chats."
+}

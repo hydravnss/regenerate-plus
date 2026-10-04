@@ -57,20 +57,6 @@
     to { transform: rotate(360deg); }
 }
 
-/* ---------- ligne dans un message ---------- */
-.regenplus-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin: 10px 0 6px;
-    padding: 0;
-    clear: both;
-}
-
-.regenplus-row.regenplus-dim .regenplus-btn {
-    opacity: 0.55;
-}
-
 /* ---------- bouton flottant ---------- */
 #regenplus-float {
     --regenplus-size: 56px;
@@ -299,5 +285,10 @@
 
 /* ---------- option : masquer le Régénérer natif du menu ✨ ---------- */
 body.regenplus-hide-builtin #option_regenerate {
+    display: none !important;
+}
+
+/* 1.1.0 : plus aucun bouton sous les avatars / messages (au cas où un reste d'ancienne version traînerait) */
+.mes .regenplus-row {
     display: none !important;
 }

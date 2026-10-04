@@ -6,9 +6,9 @@
     "js": "index.js",
     "css": "style.css",
     "author": "hydravnss",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "homePage": "https://github.com/hydravnss/regenerate-plus",
     "minimum_client_version": "1.12.0",
     "auto_update": true,
-    "description": "FR: Un « Régénérer » fiable pour iPhone et les groupes : remplace le texte (ou nouveau swipe), même personnage en groupe, anti double-tap, déblocage des générations bloquées, nouvelles tentatives, annulation. EN: A reliable Regenerate for mobile and group chats."
+    "description": "FR: Un « Régénérer » fiable pour iPhone et les groupes, via un bouton raccourci flottant (plus aucun bouton sous les avatars) : ne régénère que la réponse du bot, jamais votre message ; remplace le texte (ou nouveau swipe), même personnage en groupe, anti double-tap, déblocage, nouvelles tentatives, annulation. EN: A reliable Regenerate for mobile and group chats via a floating shortcut button; only ever targets the bot's reply, never your own message."
 }

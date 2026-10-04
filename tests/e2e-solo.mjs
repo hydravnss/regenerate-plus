@@ -9,11 +9,11 @@ await connect(page);
 await selectChar(page);
 const reset = async (patch = {}, msgs = base) => {
     await mockClear();
-    await setSettings(page, { mode: 'replace', inline: 'last', retries: 2, retryDelay: 0.5, debounceMs: 700, undo: true, keepOthers: true, usePrompt: false, floating: false, stuckSeconds: 60, stuckDetect: true, autoUnblock: false, abortFirst: true, allowOld: true, ...patch });
+    await setSettings(page, { mode: 'replace', retries: 2, retryDelay: 0.5, debounceMs: 700, undo: true, keepOthers: true, usePrompt: false, floating: true, stuckSeconds: 60, stuckDetect: true, autoUnblock: false, abortFirst: true, allowOld: true, ...patch });
     await seedChat(page, msgs);
-    await page.waitForSelector('.regenplus-row', { timeout: 5000 });
+    await page.waitForSelector('#regenplus-float.regenplus-show', { timeout: 5000 });
 };
-const rgTap = () => tap(page, '#chat .mes:last-child .regenplus-regen');
+const rgTap = () => tap(page, '#regenplus-float .regenplus-regen');
 
 // ---------- 1. Remplacer ----------
 await reset();
@@ -24,11 +24,11 @@ let st = await chatInfo(page);
 ok(st.len === 2 && st.msgs[1].mes === 'Nouvelle réponse REMPLACÉE.', `Remplacer : texte remplacé (len=${st.len}, mes="${st.msgs[1].mes}")`);
 ok((st.msgs[1].swipes ?? 1) === 1, `Remplacer : aucun swipe en plus (swipes=${st.msgs[1].swipes})`);
 ok(st.msgs[1].prev, 'Remplacer : ancien texte gardé pour annuler');
-ok(await page.locator('#chat .mes:last-child .regenplus-undo').isVisible(), 'Bouton « Annuler » visible');
+ok(await page.locator('#regenplus-float .regenplus-undo').isVisible(), 'Bouton « Annuler » visible');
 let lg = await mockLog();
 ok(lg.length === 1 && !JSON.stringify(lg[0].messages).includes(OLD), 'Le modèle ne voit pas l’ancienne réponse (contexte propre)');
 await shot(page, '01-remplace');
-await tap(page, '#chat .mes:last-child .regenplus-undo');
+await tap(page, '#regenplus-float .regenplus-undo');
 await page.waitForTimeout(800);
 st = await chatInfo(page);
 ok(st.msgs[1].mes === OLD && !st.msgs[1].prev, `Annuler : ancien texte restauré ("${st.msgs[1].mes}")`);
@@ -43,7 +43,7 @@ await idle(page);
 st = await chatInfo(page);
 ok(st.len === 2 && st.msgs[1].swipes === 2 && st.msgs[1].sid === 1 && st.msgs[1].mes === 'Variante swipe.', `Nouveau swipe : +1 swipe (swipes=${st.msgs[1].swipes}, sid=${st.msgs[1].sid})`);
 await shot(page, '02-swipe');
-await tap(page, '#chat .mes:last-child .regenplus-undo');
+await tap(page, '#regenplus-float .regenplus-undo');
 await page.waitForTimeout(1200);
 st = await chatInfo(page);
 ok(st.msgs[1].swipes === 1 && st.msgs[1].mes === OLD, `Annuler (swipe) : retour à l’ancien texte (swipes=${st.msgs[1].swipes}, mes="${st.msgs[1].mes}")`);
@@ -55,7 +55,7 @@ await page.evaluate(async () => {
     m.swipes = [m.mes, 'Deuxième', 'Troisième']; m.swipe_info = m.swipes.map(() => ({ extra: {} })); m.swipe_id = 0;
     await c.printMessages();
 });
-await page.waitForSelector('.regenplus-row');
+await page.waitForSelector('#regenplus-float.regenplus-show');
 await mock({ queue: [{ kind: 'ok', text: 'Quatrième.' }] });
 await rgTap();
 await idle(page);
@@ -77,7 +77,7 @@ await page.evaluate(async () => {
     m.swipes = ['Alpha', 'Beta']; m.swipe_info = [{ extra: {} }, { extra: {} }]; m.swipe_id = 1; m.mes = 'Beta';
     await c.printMessages();
 });
-await page.waitForSelector('.regenplus-row');
+await page.waitForSelector('#regenplus-float.regenplus-show');
 await mock({ queue: [{ kind: 'ok', text: 'Beta remplacé.' }] });
 await rgTap();
 await idle(page);
@@ -92,7 +92,7 @@ await rgTap();
 await idle(page);
 st = await chatInfo(page);
 ok(st.msgs[1].mes.startsWith(OLD) && st.msgs[1].mes.includes('la suite'), `Continuer : texte prolongé ("${st.msgs[1].mes}")`);
-await tap(page, '#chat .mes:last-child .regenplus-undo');
+await tap(page, '#regenplus-float .regenplus-undo');
 await page.waitForTimeout(600);
 st = await chatInfo(page);
 ok(st.msgs[1].mes === OLD, 'Continuer + Annuler : texte d’origine');
@@ -127,7 +127,7 @@ ok(st.msgs[1].mes === OLD && st.len === 2, 'Erreur 500 seule : ancien texte inta
 // ---------- 6. Anti double tap ----------
 await reset({ debounceMs: 900 });
 await mock({ queue: [{ kind: 'slow' }], default: 'ok' });
-await page.evaluate(() => { const b = document.querySelector('#chat .mes:last-child .regenplus-regen'); b.click(); b.click(); setTimeout(() => b.click(), 120); });
+await page.evaluate(() => { const b = document.querySelector('#regenplus-float .regenplus-regen'); b.click(); b.click(); setTimeout(() => b.click(), 120); });
 await idle(page, 30000);
 lg = await mockLog();
 ok(lg.length === 1, `Double/triple tap : 1 seule requête (requêtes=${lg.length})`);
@@ -148,9 +148,9 @@ lg = await mockLog();
 ok(lg.length === 1 && !JSON.stringify(lg[0].messages).includes('CONSIGNE-DE-TEST'), 'Instruction retirée après la génération (une seule fois)');
 
 // ---------- 8. Ancien message (non dernier) ----------
-await reset({ inline: 'all' }, [{ is_user: true, mes: 'U1' }, { mes: 'Bot un' }, { is_user: true, mes: 'U2' }, { mes: 'Bot deux' }, { is_user: true, mes: 'U3' }, { mes: 'Bot trois' }]);
+await reset({}, [{ is_user: true, mes: 'U1' }, { mes: 'Bot un' }, { is_user: true, mes: 'U2' }, { mes: 'Bot deux' }, { is_user: true, mes: 'U3' }, { mes: 'Bot trois' }]);
 await mock({ queue: [{ kind: 'ok', text: 'Bot un REFAIT' }] });
-await tap(page, '#chat .mes[mesid="1"] .regenplus-regen');
+await page.evaluate(() => globalThis.regeneratePlus.regenerate({ mesId: 1 }));
 await idle(page);
 st = await chatInfo(page);
 lg = await mockLog();

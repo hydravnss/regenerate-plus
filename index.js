@@ -1,5 +1,5 @@
 /**
- * Regenerate Plus — extension SillyTavern
+ * Regenerate Plus 1.1.0 — extension SillyTavern
  * Un « Régénérer » fiable, pensé pour iPhone Safari et les chats de groupe.
  *
  * Vanilla ES module, aucune étape de build.
@@ -18,11 +18,14 @@ const TITLE = 'Regenerate Plus';
 const PROMPT_KEY = 'regenerate_plus_instruction';
 const TAIL_KEY = 'regenerate_plus_tail_backup';
 
+const VERSION = '1.1.0';
+
 const defaultSettings = Object.freeze({
     enabled: true,
     mode: 'replace', // replace | swipe | continue
-    inline: 'last', // last | all | off
-    floating: false,
+    floating: true, // bouton raccourci flottant (le seul bouton : plus rien sous les avatars depuis 1.1.0)
+    replyIfUserLast: true, // dernier message = le tien : le bouton génère la réponse du bot (sinon il se cache)
+    migrated110: false, // interne : migration 1.0.x → 1.1.0 faite
     floatX: 88,
     floatY: 70,
     floatSize: 56,
@@ -56,10 +59,30 @@ function ctx() {
     return stExt.getContext();
 }
 
+/**
+ * Migration 1.0.x → 1.1.0 : les boutons « 🔄 Régénérer / ↩️ Annuler » sous chaque message (réglage `inline` = last | all)
+ * n'existent plus. L'ancien réglage passe à 'none' puis est supprimé, et le bouton raccourci flottant est activé
+ * (sinon l'utilisateur n'aurait plus aucun bouton).
+ */
+function migrateSettings(s) {
+    let changed = false;
+    if (s.inline !== undefined) {
+        if (s.inline === 'last' || s.inline === 'all') {
+            s.inline = 'none';
+            if (!s.migrated110) s.floating = true;
+        }
+        delete s.inline;
+        changed = true;
+    }
+    if (!s.migrated110) { s.migrated110 = true; changed = true; }
+    return changed;
+}
+
 function getSettings() {
     const store = stExt.extension_settings;
     if (!store[MODULE_NAME] || typeof store[MODULE_NAME] !== 'object') store[MODULE_NAME] = {};
     const s = store[MODULE_NAME];
+    if (migrateSettings(s)) save();
     for (const [k, v] of Object.entries(defaultSettings)) if (s[k] === undefined) s[k] = v;
     return s;
 }
@@ -87,6 +110,11 @@ const groupFlagStuck = () => { try { return !!stGroups.is_group_generating; } ca
 const swipeStateNow = () => { try { return ctx().swipe?.state?.() ?? 'none'; } catch { return 'none'; } };
 const chatOpen = () => { const c = ctx(); return (c.characterId !== undefined || !!c.groupId) && c.chat.length > 0; };
 const isBotMessage = (m) => !!m && !m.is_user && !m.is_system && !m.extra?.isSmallSys;
+const isSystemMsg = (m) => !!m && (!!m.is_system || !!m.extra?.isSmallSys);
+/** Garde-fou : un message de l'utilisateur ne doit JAMAIS être régénéré, remplacé, continué, annulé ou supprimé par l'extension. */
+function assertBot(m, what = 'cette action') {
+    if (!isBotMessage(m)) throw new Error(`Garde-fou : ${what} ne peut viser qu'un message du bot (jamais le tien).`);
+}
 
 /** Texte « valable » ? (au moins N lettres/chiffres, hors « ... » du chargement) */
 function textOk(text) {
@@ -334,14 +362,21 @@ async function recoverTailBackup() {
 
 /* ------------------------------------------------------------------ résolution cible / locuteur */
 
+/**
+ * Cible par défaut (bouton raccourci, /regen sans mes=, menu ✨) : le dernier message du BOT (ni utilisateur, ni système),
+ * en groupe comme en solo. Retourne { index, mode? } :
+ *  - dernier message « réel » = bot            → { index: ce message }
+ *  - dernier message « réel » = toi (is_user)  → { index: -1, userLast: true } : on ne touche à rien, on génère seulement la réponse
+ */
 function findTarget() {
     const chat = ctx().chat;
     for (let i = chat.length - 1; i >= 0; i--) {
         const m = chat[i];
-        if (!m || m.is_system) continue;
-        return i;
+        if (!m || isSystemMsg(m)) continue;
+        if (m.is_user) return { index: -1, userLast: true, userIndex: i };
+        return { index: i };
     }
-    return -1;
+    return { index: -1 };
 }
 
 function speakerIndex(msg) {
@@ -385,6 +420,8 @@ function makeFlow(mode, N, target) {
     const gen = (type, opts) => (stScript.Generate || c.generate)(type, opts);
     const prevText = String(target.mes ?? '');
 
+    if (mode !== 'reply') assertBot(target, 'la régénération'); // jamais un message is_user, quel que soit le mode
+
     if (isGroup && mode !== 'reply' && chid < 0) {
         throw new Error('Impossible de retrouver le personnage de ce message dans la liste des personnages.');
     }
@@ -394,7 +431,10 @@ function makeFlow(mode, N, target) {
         const old = target;
         const ensureOld = async () => {
             const chat = ctx().chat;
-            if (chat.length === N + 1 && chat[N] !== old) await stScript.deleteLastMessage();
+            if (chat.length === N + 1 && chat[N] !== old) {
+                if (!isBotMessage(chat[N])) throw new Error('Garde-fou : le message à remplacer n’est pas une réponse du bot, rien n’est supprimé.');
+                await stScript.deleteLastMessage();
+            }
             if (chat.length === N) {
                 chat.push(old);
                 stScript.addOneMessage(old, { forceId: N, scroll: false });
@@ -406,6 +446,7 @@ function makeFlow(mode, N, target) {
                 await ensureOld();
                 setInstruction(prevText);
                 if (isGroup) {
+                    assertBot(ctx().chat[ctx().chat.length - 1], 'la suppression avant régénération de groupe');
                     await stScript.deleteLastMessage();
                     return gen('regenerate', { force_chid: chid });
                 }
@@ -541,8 +582,8 @@ function makeFlow(mode, N, target) {
         },
         check() { const ch = ctx().chat; return ch.length > before && isBotMessage(ch[ch.length - 1]) && textOk(ch[ch.length - 1].mes); },
         hasPartial() { const ch = ctx().chat; return ch.length > before && String(ch[ch.length - 1]?.mes || '').trim().length > 0; },
-        async cleanupBetween() { while (ctx().chat.length > before) await stScript.deleteLastMessage(); },
-        async rollback() { while (ctx().chat.length > before) await stScript.deleteLastMessage(); },
+        async cleanupBetween() { while (ctx().chat.length > before && !ctx().chat[ctx().chat.length - 1]?.is_user) await stScript.deleteLastMessage(); },
+        async rollback() { while (ctx().chat.length > before && !ctx().chat[ctx().chat.length - 1]?.is_user) await stScript.deleteLastMessage(); },
         async commit() { /* rien à annuler */ },
     };
 }
@@ -566,20 +607,38 @@ async function regenerate(opts = {}) {
         return { ok: false, reason: 'editing' };
     }
 
-    let N = Number.isInteger(opts.mesId) ? opts.mesId : findTarget();
-    const msg = c.chat[N];
-    if (!msg) { notify('warning', 'Aucun message à régénérer.', { force: true }); return { ok: false, reason: 'nomsg' }; }
-
+    const explicit = Number.isInteger(opts.mesId);
     let mode = opts.mode || s.mode;
-    if (msg.is_user) {
-        if (N !== c.chat.length - 1) { notify('warning', 'On ne régénère que les messages du bot.', { force: true }); return { ok: false, reason: 'user' }; }
-        mode = 'reply';
-    } else if (msg.is_system || msg.extra?.isSmallSys) {
-        notify('warning', 'Ce message système ne peut pas être régénéré.', { force: true });
-        return { ok: false, reason: 'system' };
+    let N;
+    if (explicit) {
+        N = opts.mesId;
+        const msg = c.chat[N];
+        if (!msg) { notify('warning', 'Aucun message à régénérer.', { force: true }); return { ok: false, reason: 'nomsg' }; }
+        // Garde-fou : un message de l'utilisateur n'est JAMAIS une cible (bouton, /regen mes=N, API).
+        if (msg.is_user) { notify('warning', 'On ne régénère que les messages du bot, jamais le tien.', { force: true }); return { ok: false, reason: 'user' }; }
+        if (isSystemMsg(msg)) { notify('warning', 'Ce message système ne peut pas être régénéré.', { force: true }); return { ok: false, reason: 'system' }; }
+    } else {
+        const t = findTarget();
+        if (t.userLast) {
+            // Le dernier message est le tien : on ne le touche pas. On génère seulement la réponse du bot (sans rien remplacer),
+            // sauf si l'option est coupée → rien ne se passe.
+            if (!s.replyIfUserLast) { notify('info', 'Le dernier message est le tien : rien à régénérer.', { force: true }); return { ok: false, reason: 'user-last' }; }
+            N = t.userIndex; // simple repère (ton message) : jamais modifié ; le bot répondra APRÈS
+            mode = 'reply';
+        } else if (t.index < 0) {
+            notify('warning', 'Aucun message du bot à régénérer.', { force: true });
+            return { ok: false, reason: 'nomsg' };
+        } else {
+            N = t.index;
+        }
+    }
+    const msg = c.chat[N];
+    if (mode === 'reply' ? (explicit || !msg?.is_user) : !isBotMessage(msg)) {
+        notify('warning', 'On ne régénère que les messages du bot.', { force: true });
+        return { ok: false, reason: 'user' };
     }
     const isLast = N === c.chat.length - 1;
-    if (!isLast && !s.allowOld) {
+    if (mode !== 'reply' && !isLast && !s.allowOld) {
         notify('warning', 'Régénérer un ancien message est désactivé dans les réglages.', { force: true });
         return { ok: false, reason: 'old' };
     }
@@ -608,7 +667,7 @@ async function regenerate(opts = {}) {
         try { await repairSwipeState(); } catch (e) { console.warn(LOG, 'repairSwipeState', e); }
     }
 
-    run = { cancelled: false, userStopped: false, wake: null, mesId: N, mode };
+    run = { cancelled: false, userStopped: false, wake: null, mesId: mode === 'reply' ? undefined : N, mode };
     starting = false;
     refreshAll();
 
@@ -626,7 +685,7 @@ async function regenerate(opts = {}) {
     try {
         // Le brouillon du champ de saisie serait envoyé comme message par le Générer de groupe natif : on le met de côté.
         if (draftEl && draft) { draftEl.value = ''; draftEl.dispatchEvent(new Event('input', { bubbles: true })); }
-        if (!isLast) tail = detachTail(N);
+        if (!isLast && mode !== 'reply') tail = detachTail(N);
         flow = makeFlow(mode, N, c.chat[N]);
 
         const total = 1 + clamp(Number(s.retries) || 0, 0, 10);
@@ -689,7 +748,7 @@ async function regenerate(opts = {}) {
         document.body.classList.remove('regenplus-running');
         refreshAll();
     }
-    return { ok, mode, mesId: N };
+    return { ok, mode, mesId: mode === 'reply' ? undefined : N };
 }
 
 /* ------------------------------------------------------------------ annulation (restauration de l'ancien texte) */
@@ -703,6 +762,7 @@ function hasUndo(m) {
 async function undo(mesId) {
     const c = ctx();
     const m = c.chat[mesId];
+    if (m?.is_user) { notify('warning', 'On ne touche jamais à ton message.', { force: true }); return false; }
     if (!m || !hasUndo(m)) { notify('info', 'Rien à annuler pour ce message.', { force: true }); return false; }
     if (isGen() || run) { notify('warning', 'Attends la fin de la génération pour annuler.', { force: true }); return false; }
     const p = m.extra.regenplus_prev;
@@ -739,56 +799,6 @@ async function undo(mesId) {
     }
 }
 
-/* ------------------------------------------------------------------ boutons dans les messages */
-
-function buildRow() {
-    const row = document.createElement('div');
-    row.className = 'regenplus-row';
-    row.innerHTML = '<button type="button" class="regenplus-btn regenplus-regen" data-act="regen"><span class="regenplus-ico">🔄</span><span class="regenplus-lbl">Régénérer</span></button>'
-        + '<button type="button" class="regenplus-btn regenplus-undo" data-act="undo" hidden><span class="regenplus-ico">↩️</span><span class="regenplus-lbl">Annuler</span></button>';
-    return row;
-}
-
-let inlineTimer = null;
-function scheduleInline() {
-    if (inlineTimer) return;
-    inlineTimer = setTimeout(() => { inlineTimer = null; try { refreshInline(); } catch (e) { console.warn(LOG, 'inline', e); } }, 60);
-}
-
-function refreshInline() {
-    const s = S();
-    const chatEl = document.getElementById('chat');
-    if (!chatEl) return;
-    const chat = ctx().chat;
-    const lastIdx = chat.length - 1;
-    chatEl.querySelectorAll(':scope > .mes').forEach((el) => {
-        const id = Number(el.getAttribute('mesid'));
-        const m = chat[id];
-        const bot = isBotMessage(m);
-        const lastUser = !!m && m.is_user && id === lastIdx && !run && !starting && !isGen();
-        const eligible = s.enabled && s.inline !== 'off' && !!m && (bot || lastUser) && (s.inline === 'all' || id === lastIdx);
-        let row = el.querySelector(':scope > .mes_block > .regenplus-row');
-        if (!eligible) { row?.remove(); return; }
-        const block = el.querySelector(':scope > .mes_block');
-        if (!block) return;
-        if (!row) {
-            row = buildRow();
-            const text = block.querySelector(':scope > .mes_text');
-            if (text) text.after(row); else block.append(row);
-        }
-        const regenBtn = row.querySelector('.regenplus-regen');
-        const lbl = regenBtn.querySelector('.regenplus-lbl');
-        const want = lastUser ? 'Générer la réponse' : 'Régénérer';
-        if (lbl.textContent !== want) lbl.textContent = want;
-        const undoBtn = row.querySelector('.regenplus-undo');
-        const showUndo = s.undo && bot && hasUndo(m);
-        if (undoBtn.hidden === showUndo) undoBtn.hidden = !showUndo;
-        const busy = (!!run && run.mesId === id) || (starting && id === lastIdx);
-        regenBtn.classList.toggle('regenplus-busy', busy);
-        row.classList.toggle('regenplus-dim', (!!run || starting) && !busy);
-    });
-}
-
 /* ------------------------------------------------------------------ bouton flottant */
 
 function ensureFloat() {
@@ -797,7 +807,7 @@ function ensureFloat() {
     el = document.createElement('div');
     el.id = 'regenplus-float';
     el.innerHTML = '<div class="regenplus-move-label">Déplacer</div>'
-        + '<button type="button" class="regenplus-btn regenplus-fbtn regenplus-regen" data-act="regen" aria-label="Régénérer"><span class="regenplus-ico">🔄</span></button>'
+        + '<button type="button" class="regenplus-btn regenplus-fbtn regenplus-regen" data-act="regen" aria-label="Régénérer la réponse du bot" title="Régénérer la réponse du bot"><span class="regenplus-ico">🔄</span></button>'
         + '<button type="button" class="regenplus-btn regenplus-fbtn regenplus-undo" data-act="undo" aria-label="Annuler la régénération" hidden><span class="regenplus-ico">↩️</span></button>';
     document.body.appendChild(el); // sous <body> : hors de tout ancêtre transformé
     const done = document.createElement('button');
@@ -834,19 +844,26 @@ function layoutFloat() {
     const el = ensureFloat();
     const s = S();
     el.style.setProperty('--regenplus-size', `${clamp(Number(s.floatSize) || 56, 40, 96)}px`);
-    const show = s.enabled && (moveMode || (s.floating && chatOpen()));
+    const chat = ctx().chat;
+    const lastReal = [...chat].reverse().find((x) => x && !isSystemMsg(x));
+    const userLast = !!lastReal?.is_user;
+    // dernier message = le tien : le bouton génère la réponse du bot (libellé adapté) ou se cache si l'option est coupée
+    const show = s.enabled && (moveMode || (s.floating && chatOpen() && (!userLast || s.replyIfUserLast)));
     el.classList.toggle('regenplus-show', !!show);
     el.classList.toggle('regenplus-move', moveMode);
     document.getElementById('regenplus-move-done')?.classList.toggle('regenplus-show', moveMode);
     const b = floatBounds(el);
     el.style.left = `${Math.round(b.minL + clamp(Number(s.floatX), 0, 100) / 100 * (b.maxL - b.minL))}px`;
     el.style.top = `${Math.round(b.minT + clamp(Number(s.floatY), 0, 100) / 100 * (b.maxT - b.minT))}px`;
-    const chat = ctx().chat;
     const m = chat[chat.length - 1];
     const undoBtn = el.querySelector('.regenplus-undo');
     const showUndo = s.undo && isBotMessage(m) && hasUndo(m);
     if (undoBtn.hidden === showUndo) undoBtn.hidden = !showUndo;
-    el.querySelector('.regenplus-regen').classList.toggle('regenplus-busy', !!run || starting);
+    const regenBtn = el.querySelector('.regenplus-regen');
+    regenBtn.classList.toggle('regenplus-busy', !!run || starting);
+    regenBtn.dataset.target = userLast ? 'reply' : 'bot';
+    const label = userLast ? 'Générer la réponse du bot' : 'Régénérer la réponse du bot';
+    if (regenBtn.getAttribute('aria-label') !== label) { regenBtn.setAttribute('aria-label', label); regenBtn.title = label; }
 }
 
 function bindDrag(el) {
@@ -900,9 +917,14 @@ function setMoveMode(on) {
 
 /* ------------------------------------------------------------------ rafraîchissement global */
 
+let layoutTimer = null;
+function scheduleLayout() {
+    if (layoutTimer) return;
+    layoutTimer = setTimeout(() => { layoutTimer = null; try { layoutFloat(); } catch (e) { console.warn(LOG, 'layout', e); } }, 60);
+}
+
 function refreshAll() {
     try { document.body.classList.toggle('regenplus-hide-builtin', !!(S().enabled && S().hideBuiltin)); } catch { /* ignore */ }
-    try { refreshInline(); } catch (e) { console.warn(LOG, e); }
     try { layoutFloat(); } catch (e) { console.warn(LOG, e); }
     try { refreshStatus(); } catch (e) { console.warn(LOG, e); }
 }
@@ -927,10 +949,9 @@ function onDocClick(e) {
     e.stopPropagation();
     if (moveMode) return;
     const act = btn.dataset.act;
-    const mes = btn.closest('.mes');
-    const mesId = mes ? Number(mes.getAttribute('mesid')) : undefined;
-    if (act === 'regen') regenerate({ mesId, source: mes ? 'inline' : 'float' });
-    else if (act === 'undo') undo(Number.isInteger(mesId) ? mesId : ctx().chat.length - 1);
+    // Le bouton raccourci ne passe JAMAIS de mesId : la cible par défaut est le dernier message du bot (jamais le tien).
+    if (act === 'regen') regenerate({ source: 'float' });
+    else if (act === 'undo') undo(ctx().chat.length - 1);
     else if (act === 'unblock') unblock();
     else if (act === 'dismiss') { bannerDismissedFor = Date.now(); showUnlockBanner(false); }
 }
@@ -946,8 +967,8 @@ const FIELDS = [
     { key: 'undo', type: 'check', label: 'Garder l’ancien texte pour « Annuler la régénération »' },
 
     { section: 'Boutons' },
-    { key: 'inline', type: 'select', label: 'Bouton dans les messages', options: [['last', 'Dernier message seulement'], ['all', 'Tous les messages du bot'], ['off', 'Aucun']] },
-    { key: 'floating', type: 'check', label: 'Bouton flottant' },
+    { key: 'floating', type: 'check', label: 'Bouton raccourci flottant (🔄, + ↩️ Annuler)', hint: 'Régénère uniquement la réponse du bot (dernier message du bot, en groupe comme en solo). Rien n’est affiché sous les avatars / messages.' },
+    { key: 'replyIfUserLast', type: 'check', label: 'Si le dernier message est le mien : le bouton génère la réponse du bot', hint: 'Mon message n’est jamais remplacé ni régénéré. Décoché : le bouton se cache tant que mon message est le dernier.' },
     { key: 'floatX', type: 'range', label: 'Horizontal', min: 0, max: 100, step: 0.5, unit: '%' },
     { key: 'floatY', type: 'range', label: 'Vertical', min: 0, max: 100, step: 0.5, unit: '%' },
     { key: 'floatSize', type: 'range', label: 'Taille du bouton flottant', min: 40, max: 96, step: 2, unit: ' px' },
@@ -1081,7 +1102,7 @@ async function registerSlash() {
                     ],
                 }),
             ],
-            helpString: '<div>Regenerate Plus : régénère le dernier message du bot (ou <code>mes=N</code>). <code>/regen replace</code>, <code>/regen swipe</code>, <code>/regen continue</code>. Remplace l’alias <code>/regen</code> natif ; <code>/regenerate</code> reste le natif.</div>',
+            helpString: '<div>Regenerate Plus : régénère le dernier message <b>du bot</b> (ou <code>mes=N</code> si c’est un message du bot ; jamais un message utilisateur). <code>/regen replace</code>, <code>/regen swipe</code>, <code>/regen continue</code>. Remplace l’alias <code>/regen</code> natif ; <code>/regenerate</code> reste le natif.</div>',
         }));
         SlashCommandParser.addCommandObject(SlashCommand.fromProps({
             name: 'unblock',
@@ -1098,7 +1119,7 @@ async function registerSlash() {
 
 function startObservers() {
     const chatEl = document.getElementById('chat');
-    if (chatEl) new MutationObserver(scheduleInline).observe(chatEl, { childList: true, subtree: true });
+    if (chatEl) new MutationObserver(scheduleLayout).observe(chatEl, { childList: true, subtree: true });
     const form = document.getElementById('form_sheld');
     if (form && globalThis.ResizeObserver) new ResizeObserver(() => layoutFloat()).observe(form);
     window.addEventListener('resize', () => layoutFloat());
@@ -1107,7 +1128,7 @@ function startObservers() {
     const es = stScript.eventSource;
     const et = stScript.event_types || {};
     for (const name of ['CHAT_CHANGED', 'MESSAGE_DELETED', 'MESSAGE_SWIPED', 'MESSAGE_UPDATED', 'MESSAGE_RECEIVED', 'USER_MESSAGE_RENDERED', 'CHARACTER_MESSAGE_RENDERED', 'MORE_MESSAGES_LOADED', 'GENERATION_ENDED', 'GENERATION_STOPPED']) {
-        if (et[name]) es.on(et[name], () => { scheduleInline(); layoutFloat(); });
+        if (et[name]) es.on(et[name], () => { scheduleLayout(); layoutFloat(); });
     }
     if (et.CHAT_CHANGED) es.on(et.CHAT_CHANGED, () => setTimeout(() => { recoverTailBackup().catch(() => {}); }, 400));
 }
@@ -1125,7 +1146,7 @@ jQuery(async () => {
         await registerSlash();
         refreshAll();
         setTimeout(() => { refreshAll(); recoverTailBackup().catch(() => {}); }, 1500);
-        globalThis.regeneratePlus = { regenerate, undo, unblock, getSettings, refresh: refreshAll, version: '1.0.0' };
+        globalThis.regeneratePlus = { regenerate, undo, unblock, getSettings, refresh: refreshAll, version: VERSION, findTarget };
         console.log(LOG, 'chargé');
     } catch (e) {
         console.error(LOG, 'initialisation impossible', e);

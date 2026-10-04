@@ -17,9 +17,9 @@ await page.evaluate(async (gid) => { const g = await import('/scripts/group-chat
 await page.waitForTimeout(2500);
 const reset = async (patch = {}) => {
     await mockClear();
-    await setSettings(page, { mode: 'replace', inline: 'last', retries: 1, retryDelay: 0.5, debounceMs: 300, undo: true, keepOthers: true, usePrompt: false, floating: false, stuckSeconds: 60, abortFirst: true, allowOld: true, ...patch });
+    await setSettings(page, { mode: 'replace', retries: 1, retryDelay: 0.5, debounceMs: 300, undo: true, keepOthers: true, usePrompt: false, floating: true, stuckSeconds: 60, abortFirst: true, allowOld: true, ...patch });
     await seedChat(page, msgs);
-    await page.waitForSelector('.regenplus-row', { timeout: 5000 });
+    await page.waitForSelector('#regenplus-float.regenplus-show', { timeout: 5000 });
 };
 const names = async () => (await chatInfo(page)).msgs.map((m) => m.name).join(',');
 ok(await page.evaluate(() => !!SillyTavern.getContext().groupId), 'Groupe ouvert');
@@ -28,7 +28,7 @@ ok(await page.evaluate(() => !!SillyTavern.getContext().groupId), 'Groupe ouvert
 await reset();
 let allBob = true;
 for (let i = 0; i < 4; i++) {
-    await tap(page, '#chat .mes:last-child .regenplus-regen');
+    await tap(page, '#regenplus-float .regenplus-regen');
     await idle(page);
     await sleep(400);
     const n = await names();
@@ -42,9 +42,9 @@ ok(av === BOB, `Avatar d’origine conservé (${av})`);
 await shot(page, '06-groupe-bob');
 
 // G2 : ancien message de Seraphina (index 1)
-await reset({ inline: 'all' });
+await reset({});
 await mock({ queue: [{ kind: 'ok', text: 'Seraphina REFAIT.' }] });
-await tap(page, '#chat .mes[mesid="1"] .regenplus-regen');
+await page.evaluate(() => globalThis.regeneratePlus.regenerate({ mesId: 1 }));
 await idle(page);
 await sleep(400);
 st = await chatInfo(page);
@@ -55,7 +55,7 @@ ok(lg.length === 1 && !JSON.stringify(lg[0].messages).includes('ravi d’être l
 // G3 : brouillon dans le champ de saisie non envoyé
 await reset();
 await page.fill('#send_textarea', 'mon brouillon important');
-await tap(page, '#chat .mes:last-child .regenplus-regen');
+await tap(page, '#regenplus-float .regenplus-regen');
 await idle(page);
 await sleep(400);
 st = await chatInfo(page);
@@ -66,7 +66,7 @@ await page.fill('#send_textarea', '');
 // G4 : nouveau swipe en groupe
 await reset({ mode: 'swipe' });
 await mock({ queue: [{ kind: 'ok', text: 'Bob variante.' }] });
-await tap(page, '#chat .mes:last-child .regenplus-regen');
+await tap(page, '#regenplus-float .regenplus-regen');
 await idle(page);
 st = await chatInfo(page);
 ok(st.len === 4 && st.msgs[3].name === 'Bob' && st.msgs[3].swipes === 2 && st.msgs[3].mes === 'Bob variante.', `Groupe/swipe : +1 swipe pour Bob (swipes=${st.msgs[3].swipes})`);
@@ -74,7 +74,7 @@ ok(st.len === 4 && st.msgs[3].name === 'Bob' && st.msgs[3].swipes === 2 && st.ms
 // G5 : erreur → message d’origine restauré (nom/avatar)
 await reset({ retries: 0 });
 await mock({ queue: ['error'] });
-await tap(page, '#chat .mes:last-child .regenplus-regen');
+await tap(page, '#regenplus-float .regenplus-regen');
 await idle(page);
 await sleep(400);
 st = await chatInfo(page);
@@ -84,7 +84,7 @@ ok(st.len === 4 && st.msgs[3].mes === msgs[3].mes && st.msgs[3].name === 'Bob' &
 // G6 : génération bloquée en groupe → Débloquer
 await reset({ stuckSeconds: 5 });
 await mock({ queue: ['hang'] });
-await tap(page, '#chat .mes:last-child .regenplus-regen');
+await tap(page, '#regenplus-float .regenplus-regen');
 await page.waitForTimeout(1500);
 await page.waitForSelector('#regenplus-unlock.regenplus-show', { timeout: 15000 });
 await tap(page, '#regenplus-unlock .regenplus-unlock-go');
@@ -93,7 +93,7 @@ const gstate = await page.evaluate(async () => { const g = await import('/script
 st = await chatInfo(page);
 ok(!gstate.grp && !gstate.send && !gstate.gen && st.len === 4 && st.msgs[3].mes === msgs[3].mes, `Groupe/blocage : Débloquer libère tout (${JSON.stringify(gstate)})`);
 await mockClear();
-await tap(page, '#chat .mes:last-child .regenplus-regen');
+await tap(page, '#regenplus-float .regenplus-regen');
 await idle(page);
 st = await chatInfo(page);
 ok(st.msgs[3].mes !== msgs[3].mes && st.msgs[3].name === 'Bob', 'Groupe : régénération OK après déblocage');

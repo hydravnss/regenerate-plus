@@ -8,7 +8,7 @@ await connect(page);
 await selectChar(page);
 const reset = async (patch = {}, msgs = base) => {
     await mockClear();
-    await setSettings(page, { enabled: true, mode: 'replace', inline: 'last', retries: 1, retryDelay: 0.5, debounceMs: 300, undo: true, interceptBuiltin: false, hideBuiltin: false, floating: false, stuckSeconds: 60, ...patch });
+    await setSettings(page, { enabled: true, mode: 'replace', retries: 1, retryDelay: 0.5, debounceMs: 300, undo: true, interceptBuiltin: false, hideBuiltin: false, floating: true, stuckSeconds: 60, ...patch });
     await seedChat(page, msgs);
 };
 
@@ -158,14 +158,14 @@ await tap(page, '#options_button');
 await connect(page, { stream: true });
 await reset({});
 await mock({ queue: [{ kind: 'ok', text: 'Réponse en flux continu, assez longue pour être diffusée par petits morceaux.' }] });
-await tap(page, '#chat .mes:last-child .regenplus-regen');
+await tap(page, '#regenplus-float .regenplus-regen');
 await idle(page);
 st = await chatInfo(page);
 ok(st.len === 2 && st.msgs[1].mes.startsWith('Réponse en flux continu'), `Streaming/Remplacer ("${st.msgs[1].mes}")`);
 // stop en cours de flux : texte partiel conservé
 await reset({});
 await mock({ queue: [{ kind: 'slow', text: 'Début de réponse qui sera coupée net par le bouton stop de SillyTavern, donc partielle.' }] });
-await tap(page, '#chat .mes:last-child .regenplus-regen');
+await tap(page, '#regenplus-float .regenplus-regen');
 await page.waitForTimeout(2200);
 await page.evaluate(() => document.getElementById('mes_stop').click());
 await idle(page);
@@ -174,7 +174,7 @@ ok(st.len === 2 && st.msgs[1].mes !== OLD && st.msgs[1].mes.length > 3 && st.msg
 // stop avant le premier jeton : ancien texte restauré
 await reset({});
 await mock({ queue: ['hang'] });
-await tap(page, '#chat .mes:last-child .regenplus-regen');
+await tap(page, '#regenplus-float .regenplus-regen');
 await page.waitForTimeout(1500);
 await page.evaluate(() => document.getElementById('mes_stop').click());
 await idle(page);
@@ -185,7 +185,7 @@ ok(st.len === 2 && st.msgs[1].mes === OLD, `Streaming/Stop sans jeton : ancien t
 // ---------- réinitialisation ----------
 await page.evaluate(() => document.getElementById('regenplus_reset').click());
 const def = await page.evaluate(() => SillyTavern.getContext().extensionSettings.regenerate_plus);
-ok(def.mode === 'replace' && def.floating === false && def.floatX === 88, 'Réinitialisation des réglages');
+ok(def.mode === 'replace' && def.floating === true && def.replyIfUserLast === true && def.inline === undefined && def.floatX === 88, 'Réinitialisation des réglages');
 
 const real = errs.filter((e) => !/Extension update failed|image-metadata|ImageMetadata|Error loading folders|DOM element is not valid/.test(e));
 ok(real.length === 0, `Aucune erreur console/page (${real.length}) ${real.join(' ; ').slice(0, 400)}`);
